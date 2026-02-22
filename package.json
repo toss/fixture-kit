@@ -1,0 +1,63 @@
+{
+  "name": "fixture-kit",
+  "version": "0.0.1",
+  "description": "A kit for managing fixtures for testing",
+  "keywords": [
+    "fixture",
+    "fixture-kit",
+    "test",
+    "testing"
+  ],
+  "homepage": "https://github.com/toss/fixture-kit",
+  "bugs": "https://github.com/toss/fixture-kit/issues",
+  "license": "MIT",
+  "author": "Hoyeon Lee <hoyeon@toss.im>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/toss/fixture-kit.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://www.npmjs.com",
+    "tag": "latest"
+  },
+  "scripts": {
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepack": "yarn build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.13",
+    "oxfmt": "^0.34.0",
+    "oxlint": "^1.49.0",
+    "tsdown": "^0.20.3",
+    "typescript": "^5.9.3"
+  },
+  "dependenciesMeta": {
+    "oxfmt@0.34.0": {
+      "unplugged": true
+    },
+    "oxlint@1.49.0": {
+      "unplugged": true
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "packageManager": "yarn@4.12.0"
+}

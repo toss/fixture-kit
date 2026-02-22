@@ -1,0 +1,8 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - run: yarn run format {staged_files}
+      stage_fixed: true
+
+    - run: yarn run lint:fix {staged_files}
+      stage_fixed: true
