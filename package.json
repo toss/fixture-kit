@@ -28,7 +28,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "registry": "https://www.npmjs.com",
+    "registry": "https://registry.npmjs.org",
     "tag": "latest"
   },
   "scripts": {
