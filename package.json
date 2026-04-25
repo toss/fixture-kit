@@ -1,6 +1,6 @@
 {
   "name": "fixture-kit",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "A kit for managing fixtures for testing",
   "keywords": [
     "fixture",
