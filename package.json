@@ -39,6 +39,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "prepack": "yarn build",
+    "test": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
@@ -46,7 +47,8 @@
     "oxfmt": "^0.34.0",
     "oxlint": "^1.49.0",
     "tsdown": "^0.20.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   },
   "dependenciesMeta": {
     "oxfmt@0.34.0": {

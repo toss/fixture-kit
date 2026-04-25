@@ -15,33 +15,51 @@ jobs:
   lint:
     name: Lint
     if: github.ref != 'refs/heads/main'
-    runs-on: [Linux]
+    runs-on: [ubuntu-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 100
           filter: "blob:none"
 
-      - name: Setup
-        uses: ./.github/actions/setup
+      - uses: jdx/mise-action@60119f926c4aeea4f9d22e43a9a090b920e2e418
+      - run: corepack enable
+      - run: yarn install --immutable
 
       - name: Lint
         run: yarn lint
 
   typecheck:
     name: Type Check
-    runs-on: [Linux]
+    runs-on: [ubuntu-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 100
           filter: "blob:none"
 
-      - name: Setup
-        uses: ./.github/actions/setup
+      - uses: jdx/mise-action@60119f926c4aeea4f9d22e43a9a090b920e2e418
+      - run: corepack enable
+      - run: yarn install --immutable
 
       - name: Build
         run: yarn build
 
       - name: Type Check
         run: yarn typecheck
+
+  test:
+    name: Test
+    runs-on: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 100
+          filter: "blob:none"
+
+      - uses: jdx/mise-action@60119f926c4aeea4f9d22e43a9a090b920e2e418
+      - run: corepack enable
+      - run: yarn install --immutable
+
+      - name: Test
+        run: yarn test
