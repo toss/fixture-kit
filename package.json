@@ -1,5 +1,5 @@
 {
-  "name": "fixture-kit",
+  "name": "@fixture-kit/core",
   "version": "0.0.1",
   "description": "A kit for managing fixtures for testing",
   "keywords": [

@@ -532,6 +532,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@fixture-kit/core@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@fixture-kit/core@workspace:."
+  dependencies:
+    "@changesets/cli": "npm:^2.31.0"
+    "@types/node": "npm:^24.10.13"
+    oxfmt: "npm:^0.34.0"
+    oxlint: "npm:^1.49.0"
+    tsdown: "npm:^0.20.3"
+    typescript: "npm:^5.9.3"
+    vitest: "npm:^4.0.18"
+  dependenciesMeta:
+    oxfmt@0.34.0:
+      unplugged: true
+    oxlint@1.49.0:
+      unplugged: true
+  languageName: unknown
+  linkType: soft
+
 "@inquirer/external-editor@npm:^1.0.2":
   version: 1.0.3
   resolution: "@inquirer/external-editor@npm:1.0.3"
@@ -1826,25 +1845,6 @@ __metadata:
   checksum: 10c0/0406ee89ebeefa2d507feb07ec366bebd8a6167ae74aa4e34fb4c4abd06cf782a3ce26ae4194d70706f72182841733f00551c209fe575cb00bd92104056e78c1
   languageName: node
   linkType: hard
-
-"fixture-kit@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "fixture-kit@workspace:."
-  dependencies:
-    "@changesets/cli": "npm:^2.31.0"
-    "@types/node": "npm:^24.10.13"
-    oxfmt: "npm:^0.34.0"
-    oxlint: "npm:^1.49.0"
-    tsdown: "npm:^0.20.3"
-    typescript: "npm:^5.9.3"
-    vitest: "npm:^4.0.18"
-  dependenciesMeta:
-    oxfmt@0.34.0:
-      unplugged: true
-    oxlint@1.49.0:
-      unplugged: true
-  languageName: unknown
-  linkType: soft
 
 "fs-extra@npm:^7.0.1":
   version: 7.0.1
