@@ -1,6 +1,6 @@
 {
   "name": "fixture-kit",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "A kit for managing fixtures for testing",
   "keywords": [
     "fixture",
@@ -40,9 +40,12 @@
     "dev": "tsdown --watch",
     "prepack": "yarn build",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "version": "changeset version",
+    "release": "changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@types/node": "^24.10.13",
     "oxfmt": "^0.34.0",
     "oxlint": "^1.49.0",
