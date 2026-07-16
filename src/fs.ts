@@ -9,8 +9,14 @@ const DEFAULT_TEMP_DIR_PREFIX = "fixture-kit-";
 export async function createTempDir(): Promise<string> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), DEFAULT_TEMP_DIR_PREFIX));
 
-  // Resolve symlinks (e.g. macOS `/var` → `/private/var`) so `root` is canonical.
-  return fs.realpath(tmpDir);
+  try {
+    // Resolve symlinks (e.g. macOS `/var` → `/private/var`) so `root` is canonical.
+    return fs.realpath(tmpDir);
+  } catch (error) {
+    // Clean up the temp dir if we fail to resolve it.
+    await fs.rm(tmpDir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export async function writeFixtureTree(
@@ -31,12 +37,13 @@ export async function writeFixtureTree(
       // - a different root entirely. On Windows, `path.relative` between paths
       //   on different drives/UNC shares (e.g. `C:\` vs `D:\`) cannot produce a
       //   relative path, so it returns an absolute one that has no `..` prefix.
-      if (
+      const isOutsideRoot =
         relative === "" ||
         relative === ".." ||
         relative.startsWith(`..${path.sep}`) ||
-        path.isAbsolute(relative)
-      ) {
+        path.isAbsolute(relative);
+
+      if (isOutsideRoot) {
         throw new Error(`invalid fixture path: ${filepath}`);
       }
 
