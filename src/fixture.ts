@@ -13,6 +13,10 @@ export interface FixtureTree {
 export class Fixture implements AsyncDisposable {
   /**
    * @description The root directory of the fixture.
+   *
+   * This is a canonical, symlink-resolved absolute path, so it matches
+   * `process.cwd()` after `process.chdir(fixture.root)` (relevant on macOS,
+   * where the temp directory lives under a symlinked `/var` → `/private/var`).
    */
   readonly root: string;
   #cleanupPromise: Promise<void> | null = null;
@@ -26,8 +30,7 @@ export class Fixture implements AsyncDisposable {
   }
 
   static async fromDirectory(directory: string): Promise<Fixture> {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fixture-kit-"));
-    const fixture = new Fixture(tmpDir);
+    const fixture = new Fixture(await createTempDir());
 
     try {
       const sourcePath = path.resolve(directory);
@@ -46,8 +49,7 @@ export class Fixture implements AsyncDisposable {
   }
 
   static async create(inlineFixture: FixtureTree): Promise<Fixture> {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fixture-kit-"));
-    const fixture = new Fixture(tmpDir);
+    const fixture = new Fixture(await createTempDir());
 
     try {
       await writeFixtureTree(fixture.root, inlineFixture);
@@ -68,6 +70,13 @@ export class Fixture implements AsyncDisposable {
   async [Symbol.asyncDispose](): Promise<void> {
     return this.cleanup();
   }
+}
+
+async function createTempDir(): Promise<string> {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fixture-kit-"));
+
+  // Resolve symlinks (e.g. macOS `/var` → `/private/var`) so `root` is canonical.
+  return fs.realpath(tmpDir);
 }
 
 async function writeFixtureTree(
