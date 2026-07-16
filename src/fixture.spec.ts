@@ -104,6 +104,28 @@ describe("Fixture", () => {
 
       expect(await fs.readFile(path.join(fixture.root, "src/a/b/deep.txt"), "utf-8")).toBe("deep");
     });
+
+    it("should reject paths that escape the fixture root with ..", async () => {
+      await expect(Fixture.create({ "../escape.txt": "x" })).rejects.toThrow(
+        "invalid fixture path",
+      );
+    });
+
+    it("should reject .. traversal nested inside a directory", async () => {
+      await expect(Fixture.create({ src: { "../../escape.txt": "x" } })).rejects.toThrow(
+        "invalid fixture path",
+      );
+    });
+
+    it("should reject absolute paths that escape the fixture root", async () => {
+      await expect(Fixture.create({ "/etc/passwd": "x" })).rejects.toThrow("invalid fixture path");
+    });
+
+    it("should allow a file whose name merely starts with ..", async () => {
+      await using fixture = await Fixture.create({ "..config": "value" });
+
+      expect(await fs.readFile(path.join(fixture.root, "..config"), "utf-8")).toBe("value");
+    });
   });
 
   describe("root", () => {
