@@ -64,6 +64,46 @@ describe("Fixture", () => {
 
       expect(await fs.readFile(path.join(fixture.root, "empty.txt"), "utf-8")).toBe("");
     });
+
+    it("should interpret object values as nested directories", async () => {
+      await using fixture = await Fixture.create({
+        "package.json": '{"name":"test"}',
+        src: {
+          "index.ts": "export {}",
+          utils: {
+            "helper.ts": "export const helper = 1;",
+          },
+        },
+      });
+
+      expect(await fs.readFile(path.join(fixture.root, "package.json"), "utf-8")).toBe(
+        '{"name":"test"}',
+      );
+      expect(await fs.readFile(path.join(fixture.root, "src/index.ts"), "utf-8")).toBe("export {}");
+      expect(await fs.readFile(path.join(fixture.root, "src/utils/helper.ts"), "utf-8")).toBe(
+        "export const helper = 1;",
+      );
+    });
+
+    it("should create an empty directory from an empty object", async () => {
+      await using fixture = await Fixture.create({
+        empty: {},
+      });
+
+      const stat = await fs.stat(path.join(fixture.root, "empty"));
+      expect(stat.isDirectory()).toBe(true);
+      expect(await fs.readdir(path.join(fixture.root, "empty"))).toEqual([]);
+    });
+
+    it("should support slash paths inside nested directories", async () => {
+      await using fixture = await Fixture.create({
+        src: {
+          "a/b/deep.txt": "deep",
+        },
+      });
+
+      expect(await fs.readFile(path.join(fixture.root, "src/a/b/deep.txt"), "utf-8")).toBe("deep");
+    });
   });
 
   describe("cleanup", () => {
