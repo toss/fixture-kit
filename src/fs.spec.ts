@@ -54,10 +54,10 @@ describe("writeFixtureTree", () => {
     expect(await fs.readFile(path.join(root, "a.txt"), "utf-8")).toBe("hello");
   });
 
-  it("should create nested directories from a slash key", async () => {
-    await writeFixtureTree(await setup(), { "a/b/c.txt": "deep" });
-
-    expect(await fs.readFile(path.join(root, "a/b/c.txt"), "utf-8")).toBe("deep");
+  it("should reject a slash-separated key", async () => {
+    await expect(writeFixtureTree(await setup(), { "a/b/c.txt": "deep" })).rejects.toThrow(
+      "invalid fixture path",
+    );
   });
 
   it("should write a nested object as directories", async () => {

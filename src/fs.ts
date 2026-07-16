@@ -19,43 +19,41 @@ export async function createTempDir(): Promise<string> {
   }
 }
 
-export async function writeFixtureTree(
-  directory: string,
-  tree: FixtureTree,
-  rootDir: string = directory,
-): Promise<void> {
+export async function writeFixtureTree(directory: string, tree: FixtureTree): Promise<void> {
   await Promise.all(
-    Object.entries(tree).map(async ([filepath, content]) => {
-      const fullPath = path.resolve(directory, filepath);
-      const relative = path.relative(rootDir, fullPath);
-      // Reject paths that don't resolve to a proper descendant of the root.
-      // - `""`: the key resolves to the root itself (e.g. `.`, `foo/..`, or a
-      //   nested `..` that climbs back to root). There's no file to write there.
-      // - `..` traversal within the same root. Match on the segment boundary
-      //   (`..` or `../`), not a bare prefix, so a legit file like `..config`
-      //   isn't flagged.
-      // - a different root entirely. On Windows, `path.relative` between paths
-      //   on different drives/UNC shares (e.g. `C:\` vs `D:\`) cannot produce a
-      //   relative path, so it returns an absolute one that has no `..` prefix.
-      const isOutsideRoot =
-        relative === "" ||
-        relative === ".." ||
-        relative.startsWith(`..${path.sep}`) ||
-        path.isAbsolute(relative);
-
-      if (isOutsideRoot) {
-        throw new Error(`invalid fixture path: ${filepath}`);
-      }
+    Object.entries(tree).map(async ([name, content]) => {
+      const validName = parseValidName(name);
+      const fullPath = path.join(directory, validName);
 
       if (typeof content === "string") {
-        await fs.mkdir(path.dirname(fullPath), { recursive: true });
         await fs.writeFile(fullPath, content);
       } else if (isPlainObject(content)) {
         await fs.mkdir(fullPath, { recursive: true });
-        await writeFixtureTree(fullPath, content, rootDir);
+        await writeFixtureTree(fullPath, content);
       } else {
-        throw new TypeError(`invalid fixture content for ${filepath}: expected string or object`);
+        throw new TypeError(`invalid fixture content for ${name}: expected string or object`);
       }
     }),
   );
+}
+
+// A key names a single entry, not a path: no separators, no traversal.
+// Directories are expressed with nested objects, never slash-separated
+// keys. A lone segment that isn't `.`/`..` can't climb out of `directory`.
+function parseValidName(name: string): string {
+  if (name === "") {
+    throw new Error(`invalid fixture path "${name}": keys must not be empty`);
+  }
+
+  if (name === "." || name === "..") {
+    throw new Error(`invalid fixture path "${name}": keys must not be "." or ".."`);
+  }
+
+  if (name.includes("/") || name.includes("\\")) {
+    throw new Error(
+      `invalid fixture path "${name}": keys must name a single entry; use nested objects for directories`,
+    );
+  }
+
+  return name;
 }

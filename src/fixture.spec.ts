@@ -49,12 +49,10 @@ describe("Fixture", () => {
       );
     });
 
-    it("should create nested directories automatically", async () => {
-      await using fixture = await Fixture.create({
-        "a/b/c/deep.txt": "deep",
-      });
-
-      expect(await fs.readFile(path.join(fixture.root, "a/b/c/deep.txt"), "utf-8")).toBe("deep");
+    it("should reject a slash-separated key", async () => {
+      await expect(Fixture.create({ "a/b/c/deep.txt": "deep" })).rejects.toThrow(
+        "invalid fixture path",
+      );
     });
 
     it("should create files from empty string content", async () => {
@@ -95,14 +93,10 @@ describe("Fixture", () => {
       expect(await fs.readdir(path.join(fixture.root, "empty"))).toEqual([]);
     });
 
-    it("should support slash paths inside nested directories", async () => {
-      await using fixture = await Fixture.create({
-        src: {
-          "a/b/deep.txt": "deep",
-        },
-      });
-
-      expect(await fs.readFile(path.join(fixture.root, "src/a/b/deep.txt"), "utf-8")).toBe("deep");
+    it("should reject a slash-separated key inside a nested object", async () => {
+      await expect(Fixture.create({ src: { "a/b/deep.txt": "deep" } })).rejects.toThrow(
+        "invalid fixture path",
+      );
     });
 
     it("should reject paths that escape the fixture root with ..", async () => {
@@ -158,14 +152,10 @@ describe("Fixture", () => {
       expect(await fs.readdir(fixture.root)).toEqual([]);
     });
 
-    it("should combine a slash key with a nested object value", async () => {
-      await using fixture = await Fixture.create({
-        "a/b": {
-          "c.txt": "deep",
-        },
-      });
-
-      expect(await fs.readFile(path.join(fixture.root, "a/b/c.txt"), "utf-8")).toBe("deep");
+    it("should reject a slash-separated key with a nested object value", async () => {
+      await expect(Fixture.create({ "a/b": { "c.txt": "deep" } })).rejects.toThrow(
+        "invalid fixture path",
+      );
     });
   });
 
