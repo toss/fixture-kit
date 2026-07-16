@@ -106,6 +106,26 @@ describe("Fixture", () => {
     });
   });
 
+  describe("root", () => {
+    it("should be a symlink-resolved canonical path", async () => {
+      await using fixture = await Fixture.create({ "a.txt": "a" });
+
+      expect(fixture.root).toBe(await fs.realpath(fixture.root));
+    });
+
+    it("should match process.cwd() after chdir", async () => {
+      await using fixture = await Fixture.create({ "a.txt": "a" });
+      const original = process.cwd();
+
+      try {
+        process.chdir(fixture.root);
+        expect(process.cwd()).toBe(fixture.root);
+      } finally {
+        process.chdir(original);
+      }
+    });
+  });
+
   describe("cleanup", () => {
     it("should delete root directory", async () => {
       const fixture = await Fixture.create({ "a.txt": "a" });
