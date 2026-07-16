@@ -11,7 +11,7 @@ export async function createTempDir(): Promise<string> {
 
   try {
     // Resolve symlinks (e.g. macOS `/var` → `/private/var`) so `root` is canonical.
-    return fs.realpath(tmpDir);
+    return await fs.realpath(tmpDir);
   } catch (error) {
     // Clean up the temp dir if we fail to resolve it.
     await fs.rm(tmpDir, { recursive: true, force: true });
