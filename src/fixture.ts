@@ -1,10 +1,15 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import type { FixtureTree } from "./types.js";
+import { createTempDir, writeFixtureTree } from "./fs.js";
 
 export class Fixture implements AsyncDisposable {
   /**
    * @description The root directory of the fixture.
+   *
+   * This is a canonical, symlink-resolved absolute path, so it matches
+   * `process.cwd()` after `process.chdir(fixture.root)` (relevant on macOS,
+   * where the temp directory lives under a symlinked `/var` → `/private/var`).
    */
   readonly root: string;
   #cleanupPromise: Promise<void> | null = null;
@@ -18,8 +23,7 @@ export class Fixture implements AsyncDisposable {
   }
 
   static async fromDirectory(directory: string): Promise<Fixture> {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fixture-kit-"));
-    const fixture = new Fixture(tmpDir);
+    const fixture = new Fixture(await createTempDir());
 
     try {
       const sourcePath = path.resolve(directory);
@@ -37,18 +41,11 @@ export class Fixture implements AsyncDisposable {
     }
   }
 
-  static async create(inlineFixture: Record<string, string>): Promise<Fixture> {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fixture-kit-"));
-    const fixture = new Fixture(tmpDir);
+  static async create(inlineFixture: FixtureTree): Promise<Fixture> {
+    const fixture = new Fixture(await createTempDir());
 
     try {
-      await Promise.all(
-        Object.entries(inlineFixture).map(async ([filepath, content]) => {
-          const fullPath = path.join(fixture.root, filepath);
-          await fs.mkdir(path.dirname(fullPath), { recursive: true });
-          await fs.writeFile(fullPath, content);
-        }),
-      );
+      await writeFixtureTree(fixture.root, inlineFixture);
 
       return fixture;
     } catch (error) {
