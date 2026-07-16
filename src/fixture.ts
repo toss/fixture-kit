@@ -86,11 +86,17 @@ async function writeFixtureTree(
       if (typeof content === "string") {
         await fs.mkdir(path.dirname(fullPath), { recursive: true });
         await fs.writeFile(fullPath, content);
-      } else if (content && typeof content === "object" && !Array.isArray(content)) {
+      } else if (
+        content &&
+        typeof content === "object" &&
+        !Array.isArray(content)
+      ) {
         await fs.mkdir(fullPath, { recursive: true });
         await writeFixtureTree(fullPath, content, rootDir);
       } else {
-        throw new TypeError(`invalid fixture content for ${filepath}: expected string or object`);
+        throw new TypeError(
+          `invalid fixture content for ${filepath}: expected string or object`,
+        );
       }
     }),
   );
