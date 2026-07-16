@@ -70,17 +70,33 @@ export class Fixture implements AsyncDisposable {
   }
 }
 
-async function writeFixtureTree(directory: string, tree: FixtureTree): Promise<void> {
+async function writeFixtureTree(
+  directory: string,
+  tree: FixtureTree,
+  rootDir: string = directory,
+): Promise<void> {
   await Promise.all(
     Object.entries(tree).map(async ([filepath, content]) => {
-      const fullPath = path.join(directory, filepath);
+      const fullPath = path.resolve(directory, filepath);
+      const relative = path.relative(rootDir, fullPath);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) {
+        throw new Error(`invalid fixture path: ${filepath}`);
+      }
 
       if (typeof content === "string") {
         await fs.mkdir(path.dirname(fullPath), { recursive: true });
         await fs.writeFile(fullPath, content);
-      } else {
+      } else if (
+        content &&
+        typeof content === "object" &&
+        !Array.isArray(content)
+      ) {
         await fs.mkdir(fullPath, { recursive: true });
-        await writeFixtureTree(fullPath, content);
+        await writeFixtureTree(fullPath, content, rootDir);
+      } else {
+        throw new TypeError(
+          `invalid fixture content for ${filepath}: expected string or object`,
+        );
       }
     }),
   );
