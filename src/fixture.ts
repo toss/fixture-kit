@@ -2,6 +2,14 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+/**
+ * @description A file tree where string values are file contents and
+ * object values are nested directories.
+ */
+export interface FixtureTree {
+  [name: string]: string | FixtureTree;
+}
+
 export class Fixture implements AsyncDisposable {
   /**
    * @description The root directory of the fixture.
@@ -37,18 +45,12 @@ export class Fixture implements AsyncDisposable {
     }
   }
 
-  static async create(inlineFixture: Record<string, string>): Promise<Fixture> {
+  static async create(inlineFixture: FixtureTree): Promise<Fixture> {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "fixture-kit-"));
     const fixture = new Fixture(tmpDir);
 
     try {
-      await Promise.all(
-        Object.entries(inlineFixture).map(async ([filepath, content]) => {
-          const fullPath = path.join(fixture.root, filepath);
-          await fs.mkdir(path.dirname(fullPath), { recursive: true });
-          await fs.writeFile(fullPath, content);
-        }),
-      );
+      await writeFixtureTree(fixture.root, inlineFixture);
 
       return fixture;
     } catch (error) {
@@ -66,4 +68,36 @@ export class Fixture implements AsyncDisposable {
   async [Symbol.asyncDispose](): Promise<void> {
     return this.cleanup();
   }
+}
+
+async function writeFixtureTree(
+  directory: string,
+  tree: FixtureTree,
+  rootDir: string = directory,
+): Promise<void> {
+  await Promise.all(
+    Object.entries(tree).map(async ([filepath, content]) => {
+      const fullPath = path.resolve(directory, filepath);
+      const relative = path.relative(rootDir, fullPath);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) {
+        throw new Error(`invalid fixture path: ${filepath}`);
+      }
+
+      if (typeof content === "string") {
+        await fs.mkdir(path.dirname(fullPath), { recursive: true });
+        await fs.writeFile(fullPath, content);
+      } else if (
+        content &&
+        typeof content === "object" &&
+        !Array.isArray(content)
+      ) {
+        await fs.mkdir(fullPath, { recursive: true });
+        await writeFixtureTree(fullPath, content, rootDir);
+      } else {
+        throw new TypeError(
+          `invalid fixture content for ${filepath}: expected string or object`,
+        );
+      }
+    }),
+  );
 }
