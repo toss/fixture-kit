@@ -2,14 +2,14 @@
 
 English | [한국어](./README.ko.md)
 
-A kit for managing file-system fixtures for testing. Create a temporary directory declaratively, use it as a real working directory, and let `await using` clean it up — even when the test fails.
+A kit for managing file-system fixtures for testing (the files and directories a test needs). Create a temporary directory declaratively, use it as a real working directory, and let `await using` clean it up — even when the test fails.
 
-- **Automatic cleanup** — `Fixture` implements `AsyncDisposable`, so the directory is removed the moment it goes out of scope
-- **Two fixture sources** — write files inline, or copy an existing directory from your repository
-- **Isolated by design** — every fixture lives in its own fresh temporary directory, so tests never step on each other
-- **Zero dependencies** — built only on Node.js built-ins, written in TypeScript
+- **Automatic cleanup** — `Fixture` implements `AsyncDisposable`, so the directory is removed the moment it goes out of scope.
+- **Two fixture sources** — write files inline, or copy an existing directory from your repository.
+- **Isolated by design** — every fixture lives in its own fresh temporary directory, so tests never step on each other.
+- **Zero dependencies** — built only on Node.js built-ins, written in TypeScript.
 
-## Why fixture-kit?
+## Why fixture-kit
 
 Tests that touch the real file system all start the same way: create a temporary directory, fill it with files, and remember to delete it afterwards.
 
@@ -49,6 +49,8 @@ it("bundles the entry file", async () => {
 
 ## Installation
 
+Install `@fixture-kit/core` as a dev dependency with your package manager:
+
 ```sh
 npm install --save-dev @fixture-kit/core
 ```
@@ -65,9 +67,11 @@ pnpm add --save-dev @fixture-kit/core
 
 - Node.js 18 or later.
 - ESM only — the package ships no CommonJS build.
-- `await using` requires TypeScript 5.2+ (or another toolchain that supports [explicit resource management](https://github.com/tc39/proposal-explicit-resource-management)). It's optional — you can always call `cleanup()` yourself.
+- `await using` requires TypeScript 5.2+ (or another toolchain that supports [explicit resource management](https://github.com/tc39/proposal-explicit-resource-management)). `await using` itself is optional — you can always call `cleanup()` yourself.
 
 ## Quick Start
+
+Create a fixture, read a file from it, and let `await using` delete the fixture directory automatically at the end of the scope:
 
 ```ts
 import fs from "node:fs/promises";

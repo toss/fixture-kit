@@ -2,14 +2,14 @@
 
 [English](./README.md) | 한국어
 
-테스트용 파일 시스템 픽스처를 관리하는 도구예요. 임시 디렉터리를 선언적으로 만들어 실제 작업 디렉터리처럼 사용하고, 테스트가 실패해도 `await using`이 남김없이 정리해요.
+테스트용 파일 시스템 픽스처(테스트에 필요한 파일과 디렉터리 묶음)를 관리하는 도구예요. 임시 디렉터리를 선언적으로 만들어 실제 작업 디렉터리처럼 사용하고, 테스트가 실패해도 `await using`이 남김없이 정리해요.
 
-- **자동 정리** — `Fixture`가 `AsyncDisposable`을 구현해서, 스코프가 끝나는 순간 디렉터리를 삭제해요
-- **두 가지 픽스처 소스** — 파일을 인라인으로 작성하거나, 저장소의 기존 디렉터리를 복사할 수 있어요
-- **격리된 실행** — 픽스처마다 새 임시 디렉터리를 사용해서 테스트끼리 간섭하지 않아요
-- **의존성 없음** — Node.js 내장 모듈만 사용하고, TypeScript로 작성했어요
+- **자동 정리** — `Fixture`가 `AsyncDisposable`을 구현해서, 스코프가 끝나는 순간 디렉터리를 삭제해요.
+- **두 가지 픽스처 소스** — 파일을 인라인으로 작성하거나, 저장소의 기존 디렉터리를 복사할 수 있어요.
+- **격리된 실행** — 픽스처마다 새 임시 디렉터리를 사용해서 테스트끼리 간섭하지 않아요.
+- **의존성 없음** — Node.js 내장 모듈만 사용하고, TypeScript로 작성했어요.
 
-## 왜 fixture-kit인가요?
+## fixture-kit이 필요한 이유
 
 실제 파일 시스템을 다루는 테스트는 늘 같은 방식으로 시작해요. 임시 디렉터리를 만들고, 파일을 채우고, 테스트가 끝나면 잊지 않고 지워야 해요.
 
@@ -49,6 +49,8 @@ it("엔트리 파일을 번들링한다", async () => {
 
 ## 설치
 
+사용하는 패키지 매니저로 `@fixture-kit/core`를 개발 의존성으로 설치하세요.
+
 ```sh
 npm install --save-dev @fixture-kit/core
 ```
@@ -65,9 +67,11 @@ pnpm add --save-dev @fixture-kit/core
 
 - Node.js 18 이상이 필요해요.
 - ESM 전용이에요. CommonJS 빌드는 제공하지 않아요.
-- `await using`을 사용하려면 TypeScript 5.2 이상, 또는 [explicit resource management](https://github.com/tc39/proposal-explicit-resource-management)를 지원하는 다른 도구가 필요해요. 필수는 아니에요. `cleanup()`을 직접 호출해도 돼요.
+- `await using`을 사용하려면 TypeScript 5.2 이상, 또는 [explicit resource management](https://github.com/tc39/proposal-explicit-resource-management)를 지원하는 다른 도구가 필요해요. `await using` 자체는 필수가 아니에요. `cleanup()`을 직접 호출해도 돼요.
 
 ## 빠른 시작
+
+픽스처를 만들고 그 안의 파일을 읽는 전체 흐름이에요. 스코프가 끝나면 `await using`이 픽스처 디렉터리를 자동으로 삭제해요.
 
 ```ts
 import fs from "node:fs/promises";
@@ -115,11 +119,11 @@ await using fixture = await Fixture.create({
 });
 ```
 
-각 키는 파일이나 디렉터리 하나의 이름이에요. `"src/index.ts"`처럼 경로 구분자가 들어간 키는 에러를 던지니, 디렉터리는 중첩 객체로 표현하세요.
+각 키는 파일이나 디렉터리 하나의 이름이에요. `"src/index.ts"`처럼 경로 구분자가 들어간 키는 거부해요. 디렉터리는 중첩 객체로 표현하세요.
 
 ### 디렉터리 픽스처
 
-인라인으로 담기에 픽스처가 너무 크다면, 저장소에 실제 디렉터리로 두고 `Fixture.fromDirectory`로 복사하세요.
+인라인으로 담기에 픽스처가 너무 크다면 저장소에 실제 디렉터리로 두고 `Fixture.fromDirectory`로 복사하세요.
 
 ```ts
 import { fileURLToPath } from "node:url";
@@ -176,7 +180,7 @@ static fromDirectory(directory: string): Promise<Fixture>
 readonly root: string
 ```
 
-픽스처 임시 디렉터리의 절대 경로예요. symlink를 해석한 canonical 경로라서 `process.chdir(fixture.root)`를 호출한 뒤의 `process.cwd()`와 일치해요. 임시 디렉터리가 symlink된 `/var` 아래에 있는 macOS에서 의미가 있어요.
+픽스처 임시 디렉터리의 절대 경로예요. 심볼릭 링크(symlink)를 해석한 정규화된 경로라서 `process.chdir(fixture.root)`를 호출한 뒤의 `process.cwd()`와 일치해요. macOS에서는 임시 디렉터리가 심볼릭 링크된 `/var` 아래에 있어서 특히 유용해요.
 
 ### `fixture.cleanup()`
 
@@ -188,7 +192,7 @@ cleanup(): Promise<void>
 
 ### `fixture[Symbol.asyncDispose]()`
 
-`cleanup()`을 호출해요. `await using`이 동작하는 이유가 바로 이 메서드예요. 직접 호출할 일은 거의 없어요.
+`cleanup()`을 호출해요. `await using`이 동작하는 건 이 메서드 덕분이에요. 직접 호출할 일은 거의 없어요.
 
 ## 라이선스
 
