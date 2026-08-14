@@ -1,5 +1,9 @@
 # fixture-kit
 
+[![CI](https://github.com/toss/fixture-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/toss/fixture-kit/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@fixture-kit/core)](https://www.npmjs.com/package/@fixture-kit/core)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 English | [한국어](./README.ko.md)
 
 A kit for managing file-system fixtures for testing (the files and directories a test needs). Create a temporary directory declaratively, use it as a real working directory, and let `await using` clean it up — even when the test fails.

@@ -1,5 +1,9 @@
 # fixture-kit
 
+[![CI](https://github.com/toss/fixture-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/toss/fixture-kit/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@fixture-kit/core)](https://www.npmjs.com/package/@fixture-kit/core)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 [English](./README.md) | 한국어
 
 테스트용 파일 시스템 픽스처(테스트에 필요한 파일과 디렉터리 묶음)를 관리하는 도구예요. 임시 디렉터리를 선언적으로 만들어 실제 작업 디렉터리처럼 사용하고, 테스트가 실패해도 `await using`이 남김없이 정리해요.
