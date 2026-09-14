@@ -1,3 +1,5 @@
+![](./docs/public/og.png)
+
 # fixture-kit
 
 [![CI](https://github.com/toss/fixture-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/toss/fixture-kit/actions/workflows/ci.yml)
