@@ -32,9 +32,6 @@ export class Fixture implements AsyncDisposable {
         throw new Error(`source must be a directory: ${sourcePath}`);
       }
 
-      // `verbatimSymlinks` keeps relative symlink targets as written. Without it `fs.cp`
-      // rewrites them to absolute paths pointing back at `sourcePath`, so a link inside the
-      // copy resolves into the source directory instead of the fixture.
       await fs.cp(sourcePath, fixture.root, { recursive: true, verbatimSymlinks: true });
 
       return fixture;

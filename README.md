@@ -179,7 +179,6 @@ static fromDirectory(directory: string): Promise<Fixture>
 
 - `directory` — path of the source directory. Relative paths are resolved from the current working directory.
 - Throws if the path doesn't exist or isn't a directory. On failure, the temporary directory is removed before the error is rethrown.
-- Symlinks are copied as symlinks with their targets left as written. A relative link resolves inside the copy; an absolute link still points wherever it pointed in the source.
 
 ### `fixture.root`
 
