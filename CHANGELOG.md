@@ -1,5 +1,11 @@
 # fixture-kit
 
+## 1.0.1
+
+### Patch Changes
+
+- 5400e4e: Keep relative symlinks inside the copy in `Fixture.fromDirectory`. `fs.cp` rewrites relative symlink targets to absolute paths unless `verbatimSymlinks` is set, so a link in the source directory pointed back at the source after the copy.
+
 ## 1.0.0
 
 ### Major Changes
