@@ -32,7 +32,7 @@ export class Fixture implements AsyncDisposable {
         throw new Error(`source must be a directory: ${sourcePath}`);
       }
 
-      await fs.cp(sourcePath, fixture.root, { recursive: true });
+      await fs.cp(sourcePath, fixture.root, { recursive: true, verbatimSymlinks: true });
 
       return fixture;
     } catch (error) {

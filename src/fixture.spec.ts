@@ -3,6 +3,7 @@ import { Fixture } from "./fixture.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
+import os from "node:os";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const testFixture = (name: string) => path.join(__dirname, "..", "fixtures", name);
@@ -34,6 +35,29 @@ describe("Fixture", () => {
         await fs.readFile(path.join(testFixture("basic"), "src/index.ts"), "utf-8"),
       );
     });
+
+    // Windows needs an elevated process to create symlinks, so this runs on POSIX only.
+    it.skipIf(process.platform === "win32")(
+      "should keep a relative symlink pointing inside the copy",
+      async () => {
+        const source = await fs.mkdtemp(path.join(os.tmpdir(), "fixture-kit-source-"));
+
+        try {
+          await fs.writeFile(path.join(source, "target.txt"), "original");
+          await fs.symlink("target.txt", path.join(source, "link.txt"));
+
+          await using fixture = await Fixture.fromDirectory(source);
+          await fs.writeFile(path.join(fixture.root, "link.txt"), "written through the link");
+
+          expect(await fs.readFile(path.join(fixture.root, "target.txt"), "utf-8")).toBe(
+            "written through the link",
+          );
+          expect(await fs.readFile(path.join(source, "target.txt"), "utf-8")).toBe("original");
+        } finally {
+          await fs.rm(source, { recursive: true, force: true });
+        }
+      },
+    );
   });
 
   describe("create", () => {
