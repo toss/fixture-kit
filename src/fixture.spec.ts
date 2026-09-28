@@ -181,6 +181,141 @@ describe("Fixture", () => {
         "invalid fixture path",
       );
     });
+
+    it("should run setup after writing the fixture", async () => {
+      let setupRoot: string | undefined;
+
+      const fixture = await Fixture.create(
+        { "config.json": "{}" },
+        {
+          setup: async (createdFixture) => {
+            setupRoot = createdFixture.root;
+            expect(await fs.readFile(path.join(createdFixture.root, "config.json"), "utf-8")).toBe(
+              "{}",
+            );
+          },
+        },
+      );
+
+      expect(setupRoot).toBe(fixture.root);
+      await fixture.cleanup();
+    });
+
+    it("should run setup after copying a directory", async () => {
+      let setupRoot: string | undefined;
+
+      const fixture = await Fixture.fromDirectory(testFixture("basic"), {
+        setup: (createdFixture) => {
+          setupRoot = createdFixture.root;
+        },
+      });
+
+      expect(setupRoot).toBe(fixture.root);
+      await fixture.cleanup();
+    });
+  });
+
+  describe("lifecycle hooks", () => {
+    it("should run teardown before removing the root", async () => {
+      let teardownRoot: string | undefined;
+      let rootExistsDuringTeardown = false;
+
+      const fixture = await Fixture.create(
+        {},
+        {
+          teardown: async (createdFixture) => {
+            teardownRoot = createdFixture.root;
+            rootExistsDuringTeardown = await fs
+              .access(createdFixture.root)
+              .then(() => true)
+              .catch(() => false);
+          },
+        },
+      );
+
+      await fixture.cleanup();
+
+      expect(teardownRoot).toBe(fixture.root);
+      expect(rootExistsDuringTeardown).toBe(true);
+      await expect(fs.access(fixture.root)).rejects.toThrow();
+    });
+
+    it("should run teardown once for concurrent cleanup calls", async () => {
+      const teardown = vi.fn();
+      const fixture = await Fixture.create({}, { teardown });
+
+      await Promise.all([fixture.cleanup(), fixture.cleanup(), fixture.cleanup()]);
+
+      expect(teardown).toHaveBeenCalledTimes(1);
+    });
+
+    it("should share the cleanup promise when teardown re-enters cleanup", async () => {
+      let nestedCleanup: Promise<void> | undefined;
+      const fixture = await Fixture.create(
+        {},
+        {
+          teardown: (createdFixture) => {
+            nestedCleanup = createdFixture.cleanup();
+          },
+        },
+      );
+
+      const cleanup = fixture.cleanup();
+      await cleanup;
+
+      expect(nestedCleanup).toBe(cleanup);
+    });
+
+    it("should remove the root when teardown fails", async () => {
+      const teardownError = new Error("teardown failed");
+      const fixture = await Fixture.create({}, { teardown: () => Promise.reject(teardownError) });
+
+      await expect(fixture.cleanup()).rejects.toBe(teardownError);
+      await expect(fs.access(fixture.root)).rejects.toThrow();
+    });
+
+    it("should report teardown and removal errors together", async () => {
+      const teardownError = new Error("teardown failed");
+      const removalError = new Error("removal failed");
+      const remove = vi.spyOn(fs, "rm").mockRejectedValueOnce(removalError);
+      const fixture = await Fixture.create({}, { teardown: () => Promise.reject(teardownError) });
+
+      try {
+        const error = await fixture.cleanup().catch((caughtError: unknown) => caughtError);
+        expect(error).toBeInstanceOf(AggregateError);
+        expect((error as AggregateError).errors).toContain(teardownError);
+        expect((error as AggregateError).errors).toContain(removalError);
+      } finally {
+        remove.mockRestore();
+        await fs.rm(fixture.root, { recursive: true, force: true });
+      }
+    });
+
+    it("should preserve setup and teardown errors when setup fails", async () => {
+      const setupError = new Error("setup failed");
+      const teardownError = new Error("teardown failed");
+      let root: string | undefined;
+
+      const result = Fixture.create(
+        {},
+        {
+          setup: (fixture) => {
+            root = fixture.root;
+            throw setupError;
+          },
+          teardown: () => {
+            throw teardownError;
+          },
+        },
+      );
+
+      const error = await result.catch((caughtError: unknown) => caughtError);
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toContain(setupError);
+      expect((error as AggregateError).errors).toContain(teardownError);
+
+      await expect(fs.access(root!)).rejects.toThrow();
+    });
   });
 
   describe("root", () => {
@@ -239,6 +374,16 @@ describe("Fixture", () => {
       }
 
       await expect(fs.access(root)).rejects.toThrow();
+    });
+
+    it("should run teardown when the fixture is disposed", async () => {
+      const teardown = vi.fn();
+
+      {
+        await using _fixture = await Fixture.create({}, { teardown });
+      }
+
+      expect(teardown).toHaveBeenCalledTimes(1);
     });
   });
 

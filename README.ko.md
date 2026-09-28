@@ -150,31 +150,55 @@ await using fixture = await Fixture.fromDirectory(
 - 여러 번 호출하거나 동시에 호출해도 삭제는 한 번만 실행돼요.
 - 디렉터리가 이미 삭제됐어도 에러를 던지지 않아요.
 
+픽스처를 만든 직후나 삭제하기 직전에 실행할 코드가 있다면 라이프사이클 훅을 사용할 수 있어요.
+
+```ts
+await using fixture = await Fixture.create(
+  { "config.json": "{}" },
+  {
+    setup: (fixture) => fs.writeFile(path.join(fixture.root, "ready"), "yes"),
+    teardown: (fixture) => closeTestServer(fixture.root),
+  },
+);
+```
+
+두 훅 모두 동기 함수와 비동기 함수를 지원해요. `setup`은 파일을 작성하거나 복사한 뒤에 실행되고,
+`teardown`은 `await using`으로 정리할 때를 포함해 루트 디렉터리를 삭제하기 전에 실행돼요. `setup`이
+실패해도 정리는 계속 시도하고, `teardown`이 실패해도 디렉터리 삭제는 시도해요. 여러 작업이 실패하면
+각 에러를 함께 확인할 수 있어요.
+
 ## API 레퍼런스
 
-### `Fixture.create(tree)`
+### `Fixture.create(tree, options?)`
 
 임시 디렉터리를 만들고 주어진 파일 트리를 작성해요.
 
 ```ts
-static create(tree: FixtureTree): Promise<Fixture>
+static create(tree: FixtureTree, options?: FixtureOptions): Promise<Fixture>
 
 interface FixtureTree {
   [name: string]: string | FixtureTree;
+}
+
+interface FixtureOptions {
+  setup?: (fixture: Fixture) => void | Promise<void>;
+  teardown?: (fixture: Fixture) => void | Promise<void>;
 }
 ```
 
 - `tree` — 파일 트리예요. 문자열 값은 파일 내용이 되고, 일반 객체 값은 중첩 디렉터리가 되고, 빈 객체는 빈 디렉터리를 만들어요.
 - 각 키는 항목 하나의 이름이어야 해요. `/`나 `\`가 포함된 키, 빈 키, `.`과 `..`은 `invalid fixture path` 에러로 거부해요. 그래서 트리가 픽스처 루트 밖에 파일을 쓸 수 없어요.
 - 문자열도 일반 객체도 아닌 값(`Date`, 배열, 클래스 인스턴스 등)은 `TypeError`로 거부해요.
+- `setup`은 트리를 작성한 뒤 실행되고, 만들어진 픽스처를 인자로 받아요.
+- `teardown`은 픽스처 디렉터리를 삭제하기 전에 실행돼요.
 - 도중에 실패하면 임시 디렉터리를 삭제한 뒤 에러를 다시 던져요.
 
-### `Fixture.fromDirectory(directory)`
+### `Fixture.fromDirectory(directory, options?)`
 
 임시 디렉터리를 만들고 기존 디렉터리를 재귀적으로 복사해요.
 
 ```ts
-static fromDirectory(directory: string): Promise<Fixture>
+static fromDirectory(directory: string, options?: FixtureOptions): Promise<Fixture>
 ```
 
 - `directory` — 소스 디렉터리 경로예요. 상대 경로는 현재 작업 디렉터리를 기준으로 해석해요.

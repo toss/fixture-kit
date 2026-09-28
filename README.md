@@ -150,31 +150,55 @@ With `await using`, the fixture directory is removed automatically at the end of
 - Repeated or concurrent calls remove the directory only once.
 - It doesn't throw when the directory is already gone.
 
+You can run code after the fixture has been created and before it is removed with lifecycle hooks:
+
+```ts
+await using fixture = await Fixture.create(
+  { "config.json": "{}" },
+  {
+    setup: (fixture) => fs.writeFile(path.join(fixture.root, "ready"), "yes"),
+    teardown: (fixture) => closeTestServer(fixture.root),
+  },
+);
+```
+
+Both hooks may be synchronous or asynchronous. `setup` runs after the files have been written or
+copied. `teardown` runs before the root directory is removed, including when cleanup is triggered
+by `await using`. If setup fails, cleanup still runs. If teardown fails, the directory removal is
+still attempted; when more than one operation fails, the errors are reported together.
+
 ## API Reference
 
-### `Fixture.create(tree)`
+### `Fixture.create(tree, options?)`
 
 Creates a temporary directory and writes the given file tree into it.
 
 ```ts
-static create(tree: FixtureTree): Promise<Fixture>
+static create(tree: FixtureTree, options?: FixtureOptions): Promise<Fixture>
 
 interface FixtureTree {
   [name: string]: string | FixtureTree;
+}
+
+interface FixtureOptions {
+  setup?: (fixture: Fixture) => void | Promise<void>;
+  teardown?: (fixture: Fixture) => void | Promise<void>;
 }
 ```
 
 - `tree` — a file tree. String values become file contents, plain-object values become nested directories, and an empty object creates an empty directory.
 - Each key must name a single entry: keys containing `/` or `\`, empty keys, and `.` or `..` are rejected with an `invalid fixture path` error, so a tree can never write outside the fixture root.
 - Values that are neither strings nor plain objects (such as `Date`, arrays, or class instances) are rejected with a `TypeError`.
+- `setup` runs after the tree is written and receives the created fixture.
+- `teardown` runs before the fixture directory is removed.
 - If anything fails, the temporary directory is removed before the error is rethrown.
 
-### `Fixture.fromDirectory(directory)`
+### `Fixture.fromDirectory(directory, options?)`
 
 Creates a temporary directory and recursively copies an existing directory into it.
 
 ```ts
-static fromDirectory(directory: string): Promise<Fixture>
+static fromDirectory(directory: string, options?: FixtureOptions): Promise<Fixture>
 ```
 
 - `directory` — path of the source directory. Relative paths are resolved from the current working directory.
