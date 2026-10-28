@@ -63,7 +63,12 @@ describe("gitPlugin", () => {
         cwd: root,
         encoding: "utf8",
       });
-      expect(await fs.realpath(repository.stdout.trim())).toBe(root);
+      // Git may expand Windows 8.3 paths, so compare directory identity.
+      const [repositoryStat, rootStat] = await Promise.all([
+        fs.stat(repository.stdout.trim(), { bigint: true }),
+        fs.stat(root, { bigint: true }),
+      ]);
+      expect(repositoryStat).toMatchObject({ dev: rootStat.dev, ino: rootStat.ino });
       expect(await fs.readFile(path.join(root, "hello.txt"), "utf8")).toBe("hello");
 
       const index = await git("git", ["ls-files", "--stage"], {
