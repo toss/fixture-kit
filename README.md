@@ -181,6 +181,21 @@ Hooks receive a context containing only `root`. Each hook should clean up its ow
 
 The same options are available through `Fixture.fromDirectory(directory, { plugins })`.
 
+#### Git plugin
+
+Use `gitPlugin()` to run `git init` in the fixture root after its files are written or copied. Git must be installed and available on `PATH`.
+
+```ts
+import { Fixture, gitPlugin } from "@fixture-kit/core";
+
+await using fixture = await Fixture.create(
+  { "package.json": '{"name":"example"}' },
+  { plugins: [gitPlugin()] },
+);
+```
+
+The plugin initializes the repository without staging files or creating a commit. An existing `.git` entry causes setup to fail. Use your usual Git commands for further operations. Fixture cleanup removes `.git` along with the root directory; if Git initialization fails, fixture creation rejects and cleans up the directory.
+
 #### Plugin instances
 
 Fixture uses the plugin objects you pass in without cloning them. If a plugin stores mutable state, call its factory separately for each fixture so one fixture's setup or teardown cannot affect another fixture's resources.

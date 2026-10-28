@@ -181,6 +181,21 @@ await using fixture = await Fixture.create(
 
 `Fixture.fromDirectory(directory, { plugins })`에도 같은 옵션을 사용할 수 있어요.
 
+#### Git 플러그인
+
+`gitPlugin()`을 사용하면 파일을 작성하거나 복사한 뒤 픽스처 루트에서 `git init`을 실행해요. Git이 설치되어 있고 `PATH`에서 실행할 수 있어야 해요.
+
+```ts
+import { Fixture, gitPlugin } from "@fixture-kit/core";
+
+await using fixture = await Fixture.create(
+  { "package.json": '{"name":"example"}' },
+  { plugins: [gitPlugin()] },
+);
+```
+
+플러그인은 파일을 스테이징하거나 커밋하지 않고 저장소를 초기화해요. `.git` 항목이 이미 있으면 준비 단계가 실패해요. 이후 작업은 평소 쓰는 Git 명령으로 처리하세요. 픽스처를 정리하면 `.git`도 루트 디렉터리와 함께 삭제돼요. Git 초기화가 실패하면 픽스처 생성도 실패하고 디렉터리를 정리해요.
+
 #### 플러그인 인스턴스
 
 픽스처는 전달받은 플러그인 객체를 복제하지 않고 그대로 사용해요. 플러그인이 변경 가능한 상태를 저장한다면 픽스처마다 팩토리를 호출해 새 객체를 만드세요. 그러면 한 픽스처의 준비나 정리가 다른 픽스처의 자원에 영향을 주지 않아요.
