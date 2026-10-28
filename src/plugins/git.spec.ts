@@ -1,9 +1,8 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Fixture, gitPlugin } from "../index.js";
 
 const git = promisify(execFile);
@@ -29,8 +28,18 @@ async function expectExistingRepositoryRejected(
 }
 
 describe("gitPlugin", () => {
+  let configFixture: Fixture;
+
+  beforeAll(async () => {
+    configFixture = await Fixture.create({ gitconfig: "" });
+  });
+
+  afterAll(async () => {
+    await configFixture?.cleanup();
+  });
+
   beforeEach(() => {
-    vi.stubEnv("GIT_CONFIG_GLOBAL", os.devNull);
+    vi.stubEnv("GIT_CONFIG_GLOBAL", path.join(configFixture.root, "gitconfig"));
     vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
     vi.stubEnv("GIT_CONFIG_COUNT", "0");
   });
@@ -106,7 +115,10 @@ describe("gitPlugin", () => {
     const config = await fs.readFile(path.join(gitDirectory, "config"), "utf8");
     const head = await fs.readFile(path.join(gitDirectory, "HEAD"), "utf8");
     const gitfile = `gitdir: ${gitDirectory.split(path.sep).join("/")}\n`;
-    await using source = await Fixture.create({ ".git": gitfile, "source.txt": "original" });
+    await using source = await Fixture.create({
+      ".git": gitfile,
+      "source.txt": "original",
+    });
 
     await expectExistingRepositoryRejected(() =>
       Fixture.fromDirectory(source.root, { plugins: [gitPlugin()] }),
