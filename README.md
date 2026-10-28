@@ -147,34 +147,110 @@ With `await using`, the fixture directory is removed automatically at the end of
 
 `cleanup()` is idempotent:
 
-- Repeated or concurrent calls remove the directory only once.
-- It doesn't throw when the directory is already gone.
+- Repeated or concurrent calls run plugin teardown and directory removal only once.
+- Removing an already deleted directory does not cause an error.
+
+### Plugins
+
+Compose additional preparation and cleanup tasks with the `plugins` array. Each plugin can provide synchronous or asynchronous `setup` and `teardown` hooks.
+
+```ts
+await using fixture = await Fixture.create(
+  { "config.json": "{}" },
+  {
+    plugins: [
+      {
+        setup: ({ root }) => fs.mkdir(path.join(root, "generated")),
+      },
+      {
+        setup: ({ root }) => fs.writeFile(path.join(root, "generated", "ready"), "yes"),
+        teardown: ({ root }) => fs.rm(path.join(root, "generated", "ready"), { force: true }),
+      },
+    ],
+  },
+);
+```
+
+- After files are written or copied, setup hooks run in declaration order. The fixture is returned only after they all complete.
+- During cleanup, teardown hooks run in reverse order for plugins already entered, followed by directory removal.
+- If setup fails, later plugins are skipped. Plugins already entered, including the failing plugin, are cleaned up.
+- If writing or copying files fails, no plugin hooks run and the directory is removed.
+- If teardown fails, the remaining teardowns and directory removal are still attempted. A single error is rethrown unchanged; multiple errors are reported together in an `AggregateError`.
+
+Hooks receive a context containing only `root`. Each hook should clean up its own resources; leave fixture cleanup to `cleanup()` or `await using` outside the hooks. Calling the owning fixture's `cleanup()` from a hook is not supported.
+
+The same options are available through `Fixture.fromDirectory(directory, { plugins })`.
+
+#### Plugin instances
+
+Fixture uses the plugin objects you pass in without cloning them. If a plugin stores mutable state, call its factory separately for each fixture so one fixture's setup or teardown cannot affect another fixture's resources.
+
+For example, this factory keeps an open file handle for one fixture:
+
+```ts
+import fs, { type FileHandle } from "node:fs/promises";
+import path from "node:path";
+import { Fixture, type FixturePlugin } from "@fixture-kit/core";
+
+function withLogFile(): FixturePlugin {
+  let file: FileHandle | undefined;
+
+  return {
+    async setup({ root }) {
+      file = await fs.open(path.join(root, "test.log"), "w");
+      await file.writeFile("ready\n");
+    },
+    async teardown() {
+      await file?.close();
+    },
+  };
+}
+
+await using first = await Fixture.create({}, { plugins: [withLogFile()] });
+await using second = await Fixture.create({}, { plugins: [withLogFile()] });
+```
+
+Only share a plugin object between fixtures if it is stateless or keeps independent state for each fixture context. `teardown` must handle partial setup: it also runs when `setup` fails after acquiring only some resources.
 
 ## API Reference
 
-### `Fixture.create(tree)`
+### `Fixture.create(tree, options?)`
 
 Creates a temporary directory and writes the given file tree into it.
 
 ```ts
-static create(tree: FixtureTree): Promise<Fixture>
+static create(tree: FixtureTree, options?: FixtureOptions): Promise<Fixture>
 
 interface FixtureTree {
   [name: string]: string | FixtureTree;
+}
+
+interface FixtureOptions {
+  plugins?: readonly FixturePlugin[];
+}
+
+interface FixturePlugin {
+  setup?: (context: FixtureContext) => void | Promise<void>;
+  teardown?: (context: FixtureContext) => void | Promise<void>;
+}
+
+interface FixtureContext {
+  readonly root: string;
 }
 ```
 
 - `tree` — a file tree. String values become file contents, plain-object values become nested directories, and an empty object creates an empty directory.
 - Each key must name a single entry: keys containing `/` or `\`, empty keys, and `.` or `..` are rejected with an `invalid fixture path` error, so a tree can never write outside the fixture root.
 - Values that are neither strings nor plain objects (such as `Date`, arrays, or class instances) are rejected with a `TypeError`.
+- `options.plugins` — plugins that prepare the fixture after writing the tree and clean up before deletion. See [Plugins](#plugins) for execution order and failure behavior.
 - If anything fails, the temporary directory is removed before the error is rethrown.
 
-### `Fixture.fromDirectory(directory)`
+### `Fixture.fromDirectory(directory, options?)`
 
 Creates a temporary directory and recursively copies an existing directory into it.
 
 ```ts
-static fromDirectory(directory: string): Promise<Fixture>
+static fromDirectory(directory: string, options?: FixtureOptions): Promise<Fixture>
 ```
 
 - `directory` — path of the source directory. Relative paths are resolved from the current working directory.
@@ -194,7 +270,7 @@ Absolute path of the fixture's temporary directory. The path is canonical — sy
 cleanup(): Promise<void>
 ```
 
-Removes the fixture directory recursively. Idempotent — repeated or concurrent calls share a single removal, and it doesn't throw when the directory is already gone.
+Runs plugin teardown, then removes the fixture directory recursively. Repeated or concurrent calls share the entire cleanup operation. Removing an already deleted directory succeeds, but errors from teardown hooks are still reported.
 
 ### `fixture[Symbol.asyncDispose]()`
 

@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { FixtureTree } from "./types.js";
+import type { FixtureContext, FixtureOptions, FixturePlugin, FixtureTree } from "./types.js";
 import { createTempDir, writeFixtureTree } from "./fs.js";
 
 export class Fixture implements AsyncDisposable {
@@ -12,6 +12,8 @@ export class Fixture implements AsyncDisposable {
    * where the temp directory lives under a symlinked `/var` → `/private/var`).
    */
   readonly root: string;
+  readonly #context: FixtureContext;
+  readonly #activePlugins: FixturePlugin[] = [];
   #cleanupPromise: Promise<void> | null = null;
 
   /**
@@ -20,9 +22,10 @@ export class Fixture implements AsyncDisposable {
    */
   private constructor(root: string) {
     this.root = root;
+    this.#context = { root };
   }
 
-  static async fromDirectory(directory: string): Promise<Fixture> {
+  static async fromDirectory(directory: string, options?: FixtureOptions): Promise<Fixture> {
     const fixture = new Fixture(await createTempDir());
 
     try {
@@ -33,34 +36,81 @@ export class Fixture implements AsyncDisposable {
       }
 
       await fs.cp(sourcePath, fixture.root, { recursive: true, verbatimSymlinks: true });
+      await fixture.#setup(options?.plugins);
 
       return fixture;
     } catch (error) {
-      await fixture.cleanup();
-      throw error;
+      return fixture.#rejectAfterCleanup(error);
     }
   }
 
-  static async create(inlineFixture: FixtureTree): Promise<Fixture> {
+  static async create(inlineFixture: FixtureTree, options?: FixtureOptions): Promise<Fixture> {
     const fixture = new Fixture(await createTempDir());
 
     try {
       await writeFixtureTree(fixture.root, inlineFixture);
+      await fixture.#setup(options?.plugins);
 
       return fixture;
     } catch (error) {
-      await fixture.cleanup();
-      throw error;
+      return fixture.#rejectAfterCleanup(error);
     }
   }
 
-  async cleanup(): Promise<void> {
-    this.#cleanupPromise ??= fs.rm(this.root, { recursive: true, force: true });
+  cleanup(): Promise<void> {
+    this.#cleanupPromise ??= Promise.resolve().then(() => this.#cleanup());
 
     return this.#cleanupPromise;
+  }
+
+  async #setup(plugins: readonly FixturePlugin[] = []): Promise<void> {
+    for (const plugin of plugins) {
+      this.#activePlugins.push(plugin);
+      await plugin.setup?.(this.#context);
+    }
+  }
+
+  async #cleanup(): Promise<void> {
+    const errors: unknown[] = [];
+
+    for (const plugin of [...this.#activePlugins].reverse()) {
+      try {
+        await plugin.teardown?.(this.#context);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+
+    try {
+      await fs.rm(this.root, { recursive: true, force: true });
+    } catch (error) {
+      errors.push(error);
+    }
+
+    if (errors.length > 0) {
+      throwCleanupError(errors);
+    }
+  }
+
+  async #rejectAfterCleanup(error: unknown): Promise<never> {
+    try {
+      await this.cleanup();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Fixture setup failed and cleanup failed");
+    }
+
+    throw error;
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
     return this.cleanup();
   }
+}
+
+function throwCleanupError(errors: unknown[]): never {
+  if (errors.length === 1) {
+    throw errors[0];
+  }
+
+  throw new AggregateError(errors, "Fixture cleanup failed");
 }
