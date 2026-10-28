@@ -1,5 +1,15 @@
 # fixture-kit
 
+## 1.1.0
+
+### Minor Changes
+
+- 4c62c84: Add composable plugins to `Fixture.create` and `Fixture.fromDirectory`, with ordered setup, reverse teardown, and cleanup on failure.
+
+  Wait for in-flight file operations before cleanup after initialization fails, and document plugin instance scope and partial setup cleanup.
+
+- 55c7ffb: Add `gitPlugin()` to initialize fixture roots as Git repositories without staging files or creating commits.
+
 ## 1.0.1
 
 ### Patch Changes
