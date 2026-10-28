@@ -20,21 +20,26 @@ export async function createTempDir(): Promise<string> {
 }
 
 export async function writeFixtureTree(directory: string, tree: FixtureTree): Promise<void> {
-  await Promise.all(
-    Object.entries(tree).map(async ([name, content]) => {
-      const validName = parseValidName(name);
-      const fullPath = path.join(directory, validName);
+  const writes = Object.entries(tree).map(async ([name, content]) => {
+    const validName = parseValidName(name);
+    const fullPath = path.join(directory, validName);
 
-      if (typeof content === "string") {
-        await fs.writeFile(fullPath, content);
-      } else if (isPlainObject(content)) {
-        await fs.mkdir(fullPath, { recursive: true });
-        await writeFixtureTree(fullPath, content);
-      } else {
-        throw new TypeError(`invalid fixture content for ${name}: expected string or object`);
-      }
-    }),
-  );
+    if (typeof content === "string") {
+      await fs.writeFile(fullPath, content);
+    } else if (isPlainObject(content)) {
+      await fs.mkdir(fullPath, { recursive: true });
+      await writeFixtureTree(fullPath, content);
+    } else {
+      throw new TypeError(`invalid fixture content for ${name}: expected string or object`);
+    }
+  });
+
+  try {
+    await Promise.all(writes);
+  } catch (error) {
+    await Promise.allSettled(writes);
+    throw error;
+  }
 }
 
 // A key names a single entry, not a path: no separators, no traversal.

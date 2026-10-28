@@ -147,34 +147,110 @@ await using fixture = await Fixture.fromDirectory(
 
 `cleanup()`은 멱등해요.
 
-- 여러 번 호출하거나 동시에 호출해도 삭제는 한 번만 실행돼요.
-- 디렉터리가 이미 삭제됐어도 에러를 던지지 않아요.
+- 여러 번 호출하거나 동시에 호출해도 플러그인 정리와 디렉터리 삭제는 한 번만 실행돼요.
+- 디렉터리가 이미 없어도 삭제 단계는 성공해요.
+
+### 플러그인
+
+추가 준비나 정리 작업은 `plugins` 배열로 조합하세요. 각 플러그인은 동기 함수나 비동기 함수로 `setup`과 `teardown`을 제공할 수 있어요.
+
+```ts
+await using fixture = await Fixture.create(
+  { "config.json": "{}" },
+  {
+    plugins: [
+      {
+        setup: ({ root }) => fs.mkdir(path.join(root, "generated")),
+      },
+      {
+        setup: ({ root }) => fs.writeFile(path.join(root, "generated", "ready"), "yes"),
+        teardown: ({ root }) => fs.rm(path.join(root, "generated", "ready"), { force: true }),
+      },
+    ],
+  },
+);
+```
+
+- 파일을 작성하거나 복사한 뒤, 배열 순서대로 `setup`을 실행해요. 모두 끝나야 픽스처를 반환해요.
+- 정리할 때는 실행에 진입한 플러그인의 `teardown`을 역순으로 실행한 뒤 디렉터리를 삭제해요.
+- `setup`이 실패하면 이후 플러그인은 실행하지 않아요. 실패한 플러그인을 포함해 이미 진입한 플러그인은 정리해요.
+- 파일 작성이나 복사 중에 실패하면 플러그인 훅은 실행하지 않고 디렉터리를 삭제해요.
+- `teardown`이 실패해도 나머지 플러그인 정리와 디렉터리 삭제는 계속 시도해요. 에러가 하나면 그대로 던지고, 여러 개면 `AggregateError`로 함께 전달해요.
+
+훅에는 `root`만 가진 컨텍스트를 전달해요. 각 훅은 자신이 만든 자원만 정리하고, 픽스처 전체 정리는 훅 밖의 `cleanup()`이나 `await using`에 맡기세요. 훅 안에서 해당 픽스처의 `cleanup()`을 다시 호출하는 것은 지원하지 않아요.
+
+`Fixture.fromDirectory(directory, { plugins })`에도 같은 옵션을 사용할 수 있어요.
+
+#### 플러그인 인스턴스
+
+픽스처는 전달받은 플러그인 객체를 복제하지 않고 그대로 사용해요. 플러그인이 변경 가능한 상태를 저장한다면 픽스처마다 팩토리를 호출해 새 객체를 만드세요. 그러면 한 픽스처의 준비나 정리가 다른 픽스처의 자원에 영향을 주지 않아요.
+
+예를 들어 다음 팩토리는 픽스처 하나에서 사용할 파일 핸들을 보관해요.
+
+```ts
+import fs, { type FileHandle } from "node:fs/promises";
+import path from "node:path";
+import { Fixture, type FixturePlugin } from "@fixture-kit/core";
+
+function withLogFile(): FixturePlugin {
+  let file: FileHandle | undefined;
+
+  return {
+    async setup({ root }) {
+      file = await fs.open(path.join(root, "test.log"), "w");
+      await file.writeFile("ready\n");
+    },
+    async teardown() {
+      await file?.close();
+    },
+  };
+}
+
+await using first = await Fixture.create({}, { plugins: [withLogFile()] });
+await using second = await Fixture.create({}, { plugins: [withLogFile()] });
+```
+
+같은 플러그인 객체를 여러 픽스처에서 공유하려면 플러그인에 상태가 없거나, 픽스처 컨텍스트마다 상태를 따로 관리해야 해요. `setup`이 일부 자원만 만든 뒤 실패해도 `teardown`을 실행하므로, `teardown`은 준비가 끝나지 않은 상태도 처리해야 해요.
 
 ## API 레퍼런스
 
-### `Fixture.create(tree)`
+### `Fixture.create(tree, options?)`
 
 임시 디렉터리를 만들고 주어진 파일 트리를 작성해요.
 
 ```ts
-static create(tree: FixtureTree): Promise<Fixture>
+static create(tree: FixtureTree, options?: FixtureOptions): Promise<Fixture>
 
 interface FixtureTree {
   [name: string]: string | FixtureTree;
+}
+
+interface FixtureOptions {
+  plugins?: readonly FixturePlugin[];
+}
+
+interface FixturePlugin {
+  setup?: (context: FixtureContext) => void | Promise<void>;
+  teardown?: (context: FixtureContext) => void | Promise<void>;
+}
+
+interface FixtureContext {
+  readonly root: string;
 }
 ```
 
 - `tree` — 파일 트리예요. 문자열 값은 파일 내용이 되고, 일반 객체 값은 중첩 디렉터리가 되고, 빈 객체는 빈 디렉터리를 만들어요.
 - 각 키는 항목 하나의 이름이어야 해요. `/`나 `\`가 포함된 키, 빈 키, `.`과 `..`은 `invalid fixture path` 에러로 거부해요. 그래서 트리가 픽스처 루트 밖에 파일을 쓸 수 없어요.
 - 문자열도 일반 객체도 아닌 값(`Date`, 배열, 클래스 인스턴스 등)은 `TypeError`로 거부해요.
+- `options.plugins` — 트리를 작성한 뒤 준비하고 삭제 전에 정리할 플러그인 배열이에요. 실행 순서와 실패 동작은 [플러그인](#플러그인)을 참고하세요.
 - 도중에 실패하면 임시 디렉터리를 삭제한 뒤 에러를 다시 던져요.
 
-### `Fixture.fromDirectory(directory)`
+### `Fixture.fromDirectory(directory, options?)`
 
 임시 디렉터리를 만들고 기존 디렉터리를 재귀적으로 복사해요.
 
 ```ts
-static fromDirectory(directory: string): Promise<Fixture>
+static fromDirectory(directory: string, options?: FixtureOptions): Promise<Fixture>
 ```
 
 - `directory` — 소스 디렉터리 경로예요. 상대 경로는 현재 작업 디렉터리를 기준으로 해석해요.
@@ -194,7 +270,7 @@ readonly root: string
 cleanup(): Promise<void>
 ```
 
-픽스처 디렉터리를 재귀적으로 삭제해요. 멱등해서 여러 번 호출하거나 동시에 호출해도 삭제는 한 번만 실행되고, 디렉터리가 이미 없어도 에러를 던지지 않아요.
+플러그인의 `teardown`을 실행한 뒤 픽스처 디렉터리를 재귀적으로 삭제해요. 여러 번 호출하거나 동시에 호출해도 전체 정리는 한 번만 실행돼요. 디렉터리가 이미 없어도 삭제 단계는 성공하지만, 훅에서 발생한 에러는 전달돼요.
 
 ### `fixture[Symbol.asyncDispose]()`
 

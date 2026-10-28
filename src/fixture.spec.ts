@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Fixture } from "./fixture.js";
+import type { FixtureContext, FixtureOptions } from "./index.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
@@ -181,6 +182,404 @@ describe("Fixture", () => {
         "invalid fixture path",
       );
     });
+
+    it("should run setup after writing the fixture", async () => {
+      let setupRoot: string | undefined;
+
+      const fixture = await Fixture.create(
+        { "config.json": "{}" },
+        {
+          plugins: [
+            {
+              setup: async (createdFixture) => {
+                setupRoot = createdFixture.root;
+                expect(
+                  await fs.readFile(path.join(createdFixture.root, "config.json"), "utf-8"),
+                ).toBe("{}");
+                await fs.writeFile(path.join(createdFixture.root, "ready"), "yes");
+              },
+            },
+          ],
+        },
+      );
+
+      expect(setupRoot).toBe(fixture.root);
+      expect(await fs.readFile(path.join(fixture.root, "ready"), "utf-8")).toBe("yes");
+      await fixture.cleanup();
+    });
+
+    it("should run setup after copying a directory", async () => {
+      let setupRoot: string | undefined;
+
+      const fixture = await Fixture.fromDirectory(testFixture("basic"), {
+        plugins: [
+          {
+            setup: async (createdFixture) => {
+              setupRoot = createdFixture.root;
+              expect(
+                await fs.readFile(path.join(createdFixture.root, "package.json"), "utf-8"),
+              ).toBe(await fs.readFile(path.join(testFixture("basic"), "package.json"), "utf-8"));
+            },
+          },
+        ],
+      });
+
+      expect(setupRoot).toBe(fixture.root);
+      await fixture.cleanup();
+    });
+  });
+
+  describe("lifecycle hooks", () => {
+    it("should run teardown before removing the root", async () => {
+      let teardownRoot: string | undefined;
+      let rootExistsDuringTeardown = false;
+
+      const fixture = await Fixture.create(
+        {},
+        {
+          plugins: [
+            {
+              teardown: async (createdFixture) => {
+                teardownRoot = createdFixture.root;
+                rootExistsDuringTeardown = await fs
+                  .access(createdFixture.root)
+                  .then(() => true)
+                  .catch(() => false);
+              },
+            },
+          ],
+        },
+      );
+
+      await fixture.cleanup();
+
+      expect(teardownRoot).toBe(fixture.root);
+      expect(rootExistsDuringTeardown).toBe(true);
+      await expect(fs.access(fixture.root)).rejects.toThrow();
+    });
+
+    it("should run teardown once for concurrent cleanup calls", async () => {
+      const teardown = vi.fn();
+      const fixture = await Fixture.create({}, { plugins: [{ teardown }] });
+
+      const cleanup = fixture.cleanup();
+      expect(fixture.cleanup()).toBe(cleanup);
+      await Promise.all([cleanup, fixture.cleanup(), fixture.cleanup()]);
+      await fixture.cleanup();
+
+      expect(teardown).toHaveBeenCalledTimes(1);
+    });
+
+    it("should run setup in order and teardown in reverse order", async () => {
+      const events: string[] = [];
+      const fixture = await Fixture.create(
+        {},
+        {
+          plugins: [
+            {
+              setup: async ({ root }) => {
+                await fs.writeFile(path.join(root, "ready"), "first");
+                events.push("first setup");
+              },
+              teardown: async ({ root }) => {
+                expect(await fs.readFile(path.join(root, "ready"), "utf-8")).toBe(
+                  "second teardown",
+                );
+                events.push("first teardown");
+              },
+            },
+            {
+              setup: async ({ root }) => {
+                expect(await fs.readFile(path.join(root, "ready"), "utf-8")).toBe("first");
+                events.push("second setup");
+              },
+              teardown: async ({ root }) => {
+                await fs.writeFile(path.join(root, "ready"), "second teardown");
+                events.push("second teardown");
+              },
+            },
+          ],
+        },
+      );
+
+      expect(events).toEqual(["first setup", "second setup"]);
+      await fixture.cleanup();
+
+      expect(events).toEqual(["first setup", "second setup", "second teardown", "first teardown"]);
+      await expect(fs.access(fixture.root)).rejects.toThrow();
+    });
+
+    it.each(["create", "fromDirectory"] as const)(
+      "should clean up entered plugins when setup fails in %s",
+      async (method) => {
+        const events: string[] = [];
+        const setupError = new Error("second setup failed");
+        const skippedSetup = vi.fn();
+        const skippedTeardown = vi.fn();
+        let root: string | undefined;
+        const options = {
+          plugins: [
+            {
+              setup: () => {
+                events.push("first setup");
+              },
+              teardown: () => {
+                events.push("first teardown");
+              },
+            },
+            {
+              setup: (fixture: FixtureContext) => {
+                root = fixture.root;
+                events.push("second setup");
+                throw setupError;
+              },
+              teardown: () => {
+                events.push("second teardown");
+              },
+            },
+            { setup: skippedSetup, teardown: skippedTeardown },
+          ],
+        };
+
+        const result =
+          method === "create"
+            ? Fixture.create({}, options)
+            : Fixture.fromDirectory(testFixture("basic"), options);
+        await expect(result).rejects.toBe(setupError);
+
+        expect(events).toEqual([
+          "first setup",
+          "second setup",
+          "second teardown",
+          "first teardown",
+        ]);
+        expect(skippedSetup).not.toHaveBeenCalled();
+        expect(skippedTeardown).not.toHaveBeenCalled();
+        await expect(fs.access(root!)).rejects.toThrow();
+      },
+    );
+
+    it.each(["create", "fromDirectory"] as const)(
+      "should not enter plugins when preparing files fails in %s",
+      async (method) => {
+        const setup = vi.fn();
+        const teardown = vi.fn();
+        const options = { plugins: [{ setup, teardown }] };
+        const result =
+          method === "create"
+            ? Fixture.create({ "../escape.txt": "x" }, options)
+            : Fixture.fromDirectory(testFixture("nonexistent"), options);
+
+        await expect(result).rejects.toThrow();
+
+        expect(setup).not.toHaveBeenCalled();
+        expect(teardown).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["create", "fromDirectory"] as const)(
+      "should remove the root when reading plugins fails in %s",
+      async (method) => {
+        const optionsError = new Error("plugins unavailable");
+        const options: FixtureOptions = {
+          get plugins(): FixtureOptions["plugins"] {
+            throw optionsError;
+          },
+        };
+        const createDirectory = vi.spyOn(fs, "mkdtemp");
+        let created: string | undefined;
+
+        try {
+          const result =
+            method === "create"
+              ? Fixture.create({}, options)
+              : Fixture.fromDirectory(testFixture("basic"), options);
+          await expect(result).rejects.toBe(optionsError);
+
+          created = await createDirectory.mock.results[0]?.value;
+          expect(created).toBeTypeOf("string");
+          await expect(fs.access(created!)).rejects.toThrow();
+        } finally {
+          createDirectory.mockRestore();
+          if (created !== undefined) {
+            await fs.rm(created, { recursive: true, force: true });
+          }
+        }
+      },
+    );
+
+    it.each(["create", "fromDirectory"] as const)(
+      "should accept an empty plugins array in %s",
+      async (method) => {
+        const options = { plugins: [] };
+        await using fixture =
+          method === "create"
+            ? await Fixture.create({ "hello.txt": "world" }, options)
+            : await Fixture.fromDirectory(testFixture("basic"), options);
+
+        expect((await fs.stat(fixture.root)).isDirectory()).toBe(true);
+        const filename = method === "create" ? "hello.txt" : "package.json";
+        await expect(fs.readFile(path.join(fixture.root, filename), "utf-8")).resolves.toBeTruthy();
+      },
+    );
+
+    it("should finish every teardown and remove the root when multiple teardowns fail", async () => {
+      const firstError = new Error("first teardown failed");
+      const secondError = new Error("second teardown failed");
+      const events: string[] = [];
+      const fixture = await Fixture.create(
+        {},
+        {
+          plugins: [
+            {
+              teardown: () => {
+                events.push("first teardown");
+              },
+            },
+            {
+              teardown: () => {
+                events.push("second teardown");
+                throw firstError;
+              },
+            },
+            {
+              teardown: async () => {
+                events.push("third teardown");
+                throw secondError;
+              },
+            },
+          ],
+        },
+      );
+
+      const error = await fixture.cleanup().catch((caughtError: unknown) => caughtError);
+
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toContain(firstError);
+      expect((error as AggregateError).errors).toContain(secondError);
+      expect(events).toEqual(["third teardown", "second teardown", "first teardown"]);
+      await expect(fs.access(fixture.root)).rejects.toThrow();
+    });
+
+    it("should expose only the root directory to plugin hooks", async () => {
+      const contexts: FixtureContext[] = [];
+      const fixture = await Fixture.create(
+        {},
+        {
+          plugins: [
+            {
+              setup: (context) => {
+                contexts.push(context);
+              },
+              teardown: (context) => {
+                contexts.push(context);
+              },
+            },
+          ],
+        },
+      );
+
+      await fixture.cleanup();
+
+      expect(contexts).toStrictEqual([{ root: fixture.root }, { root: fixture.root }]);
+      for (const context of contexts) {
+        expect(context).not.toHaveProperty("cleanup");
+        expect(Symbol.asyncDispose in context).toBe(false);
+      }
+    });
+
+    it.each(["return", "await"] as const)(
+      "should reject an invalid teardown cleanup call and remove the root (%s)",
+      async (mode) => {
+        const fixture = await Fixture.create(
+          {},
+          {
+            plugins: [
+              {
+                teardown:
+                  mode === "return"
+                    ? (context) => {
+                        // @ts-expect-error Plugin hooks cannot clean up the owning fixture.
+                        return context.cleanup();
+                      }
+                    : async (context) => {
+                        // @ts-expect-error Plugin hooks cannot clean up the owning fixture.
+                        await context.cleanup();
+                      },
+              },
+            ],
+          },
+        );
+
+        await expect(fixture.cleanup()).rejects.toBeInstanceOf(TypeError);
+        await expect(fs.access(fixture.root)).rejects.toThrow();
+      },
+    );
+
+    it("should remove the root when teardown fails", async () => {
+      const teardownError = new Error("teardown failed");
+      const fixture = await Fixture.create(
+        {},
+        {
+          plugins: [{ teardown: () => Promise.reject(teardownError) }],
+        },
+      );
+
+      await expect(fixture.cleanup()).rejects.toBe(teardownError);
+      await expect(fs.access(fixture.root)).rejects.toThrow();
+    });
+
+    it("should report teardown and removal errors together", async () => {
+      const teardownError = new Error("teardown failed");
+      const removalError = new Error("removal failed");
+      const remove = vi.spyOn(fs, "rm").mockRejectedValueOnce(removalError);
+      const fixture = await Fixture.create(
+        {},
+        {
+          plugins: [{ teardown: () => Promise.reject(teardownError) }],
+        },
+      );
+
+      try {
+        const error = await fixture.cleanup().catch((caughtError: unknown) => caughtError);
+        expect(error).toBeInstanceOf(AggregateError);
+        expect((error as AggregateError).errors).toContain(teardownError);
+        expect((error as AggregateError).errors).toContain(removalError);
+      } finally {
+        remove.mockRestore();
+        await fs.rm(fixture.root, { recursive: true, force: true });
+      }
+    });
+
+    it("should preserve setup and teardown errors when setup fails", async () => {
+      const setupError = new Error("setup failed");
+      const teardownError = new Error("teardown failed");
+      let root: string | undefined;
+
+      const result = Fixture.create(
+        {},
+        {
+          plugins: [
+            {
+              setup: (fixture) => {
+                root = fixture.root;
+                throw setupError;
+              },
+              teardown: () => {
+                throw teardownError;
+              },
+            },
+          ],
+        },
+      );
+
+      const error = await result.catch((caughtError: unknown) => caughtError);
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toContain(setupError);
+      expect((error as AggregateError).errors).toContain(teardownError);
+
+      await expect(fs.access(root!)).rejects.toThrow();
+    });
   });
 
   describe("root", () => {
@@ -240,9 +639,80 @@ describe("Fixture", () => {
 
       await expect(fs.access(root)).rejects.toThrow();
     });
+
+    it("should run teardown when the fixture is disposed", async () => {
+      const teardown = vi.fn();
+
+      {
+        await using _fixture = await Fixture.create({}, { plugins: [{ teardown }] });
+      }
+
+      expect(teardown).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("cleanup on error", () => {
+    it.each(["root", "nested"] as const)(
+      "should wait for pending directory writes at the %s before cleanup",
+      async (level) => {
+        let releaseWrite!: () => void;
+        const writeGate = new Promise<void>((resolve) => {
+          releaseWrite = resolve;
+        });
+        let notifyWriteStarted!: () => void;
+        const writeStarted = new Promise<void>((resolve) => {
+          notifyWriteStarted = resolve;
+        });
+        const mkdir = fs.mkdir;
+        const writeError = new Error("directory write failed");
+        let pendingWrite: Promise<unknown> | undefined;
+        const directoryWrite = vi.spyOn(fs, "mkdir").mockImplementation((directory, options) => {
+          const name = path.basename(String(directory));
+          if (name === "failing") {
+            return Promise.reject(writeError);
+          }
+          if (name !== "pending") {
+            return mkdir(directory, options);
+          }
+
+          notifyWriteStarted();
+          const operation = writeGate.then(() => mkdir(directory, options));
+          pendingWrite = operation;
+          return operation;
+        });
+        const createDirectory = vi.spyOn(fs, "mkdtemp");
+        const remove = vi.spyOn(fs, "rm");
+        const tree = { pending: {}, failing: {} };
+        const result = Fixture.create(level === "root" ? tree : { nested: tree }).catch(
+          (error: unknown) => error,
+        );
+        let created: string | undefined;
+
+        try {
+          await writeStarted;
+          created = await createDirectory.mock.results[0]?.value;
+          // Let the rejected sibling reach cleanup if create returns too early.
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          expect(remove).not.toHaveBeenCalled();
+
+          releaseWrite();
+          await expect(result).resolves.toBe(writeError);
+          expect(remove).toHaveBeenCalledTimes(1);
+          await expect(fs.access(created!)).rejects.toThrow();
+        } finally {
+          releaseWrite();
+          await pendingWrite?.catch(() => {});
+          await result;
+          directoryWrite.mockRestore();
+          createDirectory.mockRestore();
+          remove.mockRestore();
+          if (created !== undefined) {
+            await fs.rm(created, { recursive: true, force: true });
+          }
+        }
+      },
+    );
+
     // The factories create a temp directory before doing any work; on failure
     // they must remove it so a rejected call leaves nothing behind. We spy on
     // mkdtemp to learn which directory was created, since the failing call
