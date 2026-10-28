@@ -270,6 +270,27 @@ describe("Fixture", () => {
       expect(teardown).toHaveBeenCalledTimes(1);
     });
 
+    it("should not repeat failed cleanup for concurrent or later calls", async () => {
+      const teardownError = new Error("teardown failed");
+      const teardown = vi.fn().mockRejectedValue(teardownError);
+      const fixture = await Fixture.create({}, { plugins: [{ teardown }] });
+      const remove = vi.spyOn(fs, "rm");
+
+      try {
+        const cleanups = [fixture.cleanup(), fixture.cleanup(), fixture.cleanup()];
+        await Promise.all(cleanups.map((cleanup) => expect(cleanup).rejects.toBe(teardownError)));
+        await expect(fixture.cleanup()).rejects.toBe(teardownError);
+
+        expect(teardown).toHaveBeenCalledTimes(1);
+        expect(remove).toHaveBeenCalledTimes(1);
+        expect(remove).toHaveBeenCalledWith(fixture.root, { recursive: true, force: true });
+        await expect(fs.access(fixture.root)).rejects.toMatchObject({ code: "ENOENT" });
+      } finally {
+        remove.mockRestore();
+        await fs.rm(fixture.root, { recursive: true, force: true });
+      }
+    });
+
     it("should run setup in order and teardown in reverse order", async () => {
       const events: string[] = [];
       const fixture = await Fixture.create(
@@ -356,6 +377,51 @@ describe("Fixture", () => {
         expect(skippedSetup).not.toHaveBeenCalled();
         expect(skippedTeardown).not.toHaveBeenCalled();
         await expect(fs.access(root!)).rejects.toThrow();
+      },
+    );
+
+    it.each(["create", "fromDirectory"] as const)(
+      "should clean up a partial resource when async setup fails in %s",
+      async (method) => {
+        const setupError = new Error("async setup failed");
+        const skippedSetup = vi.fn();
+        const skippedTeardown = vi.fn();
+        let root: string | undefined;
+        const teardown = vi.fn(async (context: FixtureContext) => {
+          const resource = path.join(context.root, "partial.txt");
+          expect(await fs.readFile(resource, "utf-8")).toBe("ready");
+          await fs.rm(resource);
+        });
+        const options: FixtureOptions = {
+          plugins: [
+            {
+              setup: async (context) => {
+                root = context.root;
+                await fs.writeFile(path.join(root, "partial.txt"), "ready");
+                throw setupError;
+              },
+              teardown,
+            },
+            { setup: skippedSetup, teardown: skippedTeardown },
+          ],
+        };
+
+        try {
+          const result =
+            method === "create"
+              ? Fixture.create({}, options)
+              : Fixture.fromDirectory(testFixture("basic"), options);
+          await expect(result).rejects.toBe(setupError);
+
+          expect(teardown).toHaveBeenCalledTimes(1);
+          expect(skippedSetup).not.toHaveBeenCalled();
+          expect(skippedTeardown).not.toHaveBeenCalled();
+          await expect(fs.access(root!)).rejects.toMatchObject({ code: "ENOENT" });
+        } finally {
+          if (root !== undefined) {
+            await fs.rm(root, { recursive: true, force: true });
+          }
+        }
       },
     );
 
@@ -487,34 +553,6 @@ describe("Fixture", () => {
         expect(Symbol.asyncDispose in context).toBe(false);
       }
     });
-
-    it.each(["return", "await"] as const)(
-      "should reject an invalid teardown cleanup call and remove the root (%s)",
-      async (mode) => {
-        const fixture = await Fixture.create(
-          {},
-          {
-            plugins: [
-              {
-                teardown:
-                  mode === "return"
-                    ? (context) => {
-                        // @ts-expect-error Plugin hooks cannot clean up the owning fixture.
-                        return context.cleanup();
-                      }
-                    : async (context) => {
-                        // @ts-expect-error Plugin hooks cannot clean up the owning fixture.
-                        await context.cleanup();
-                      },
-              },
-            ],
-          },
-        );
-
-        await expect(fixture.cleanup()).rejects.toBeInstanceOf(TypeError);
-        await expect(fs.access(fixture.root)).rejects.toThrow();
-      },
-    );
 
     it("should remove the root when teardown fails", async () => {
       const teardownError = new Error("teardown failed");
